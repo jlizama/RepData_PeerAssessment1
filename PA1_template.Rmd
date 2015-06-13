@@ -1,25 +1,218 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Personal Movement Data Analysis"
+output: html_document
 ---
+__________________________________________________________________________________________________
+**Introduction**
 
+This document present the method to load, analyze and answer some questions over a human movement data captured in monitoring devices.
 
-## Loading and preprocessing the data
+The document will first explain the capture, load and prepare of the data set then answer different questions regarding the data
 
+__________________________________________________________________________________________________
 
+For this analysis we will start using as a general the package **reshape2**, as may not be too relevant on initial activities it will maintain a consistency across the process. also we will use **knitr** for some specific display options, **ggplot2** for graphs, **timeDate** for a weekend/weekday definition, **stringr** to do an specific leading zeros operation and **foreach** for a loop operation required on the third section
 
-## What is mean total number of steps taken per day?
+```{r}
+library(reshape2)
+library(knitr)
+library(ggplot2)
+library(foreach)
+library(timeDate)
+library(stringr)
+```
 
+The first step is to load the data for analysis, for which the original published file will be used, then date will be transformed into a more usable format. To achieve this the following steps will be executed;
 
+1. Execute the commented piece of code for a local replication of the direct loading from the source (live code cannot be compiled in this document)
+2. Alternatively the file will be already in a folder from which is loaded into a dataset
+3. Add a column with a more R familiar date format
 
-## What is the average daily activity pattern?
+```{r}
+#temp <- tempfile()
+#aleternative code to directly download from source, also note original source URL
+#download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",temp)
+#data <- read.csv(unz(temp, "activity.csv"))
 
+#local load
+data <- read.csv("./data/activity.csv")
+#unlink(temp)
+data$Rdate<-as.Date(data$date)
+```
 
+Present initial structure and findings of the data set
 
-## Imputing missing values
+```{r}
+str(data)
+summary(data)
+```
 
+Now for the analysis of the data the following questions are reviewed;
 
+__________________________________________________________________________________________________
 
-## Are there differences in activity patterns between weekdays and weekends?
+**1.** What is mean total number of steps taken per day?
+
+__________________________________________________________________________________________________
+
+for this section we first clean the data from incomplete values
+
+```{r}
+  clean.pos <- complete.cases(data)
+  clean.data <- data[clean.pos, ]
+```
+
+Now we summarize steps by date
+
+```{r}
+day.melt<-melt(clean.data,id="Rdate",measure.vars="steps")
+stpbydate<-dcast(day.melt,Rdate ~ variable,sum)
+```
+
+The first representation it is a basic histogram of the steps by date
+
+```{r}
+hist(stpbydate$steps,col="blue", main="Steps by Date Histogram", xlab="Steps by Date")
+```
+
+Now we calculate the mean and median of the steps by date
+
+```{r kable}
+stpmnbydate<-dcast(day.melt,Rdate ~ variable,mean)
+stpmdbydate<-dcast(day.melt,Rdate ~ variable,median,fill=0)
+md_mn<-merge(stpmnbydate,stpmdbydate,by="Rdate")
+colnames(md_mn)<-c("Date","Steps Mean","Steps Median")
+kable(md_mn,digits = 4)
+```
+
+finally a bit of clean up
+
+```{r}
+rm(list=c("day.melt","md_mn","stpbydate","stpmnbydate","stpmdbydate","clean.pos"))
+```
+
+__________________________________________________________________________________________________
+
+**2.** What is the average daily activity pattern??
+
+__________________________________________________________________________________________________
+
+As we already have the data clean we reuse the previous data set with no NA values to generate the average of the different intervals across all dates and the is plotted with X as then intervals and Y as the average for all the dates
+
+```{r}
+int.melt<-melt(clean.data,id="interval",measure.vars="steps")
+stpavgint<-dcast(int.melt,interval ~ variable,mean)
+ggplot(data=stpavgint,
+       aes(x=interval, y=steps)) +
+  geom_line() +
+  ggtitle("Total average of steps by interval") +
+  xlab("Interval") +
+  ylab("Average for all days")
+```
+
+And finally for this section we answer the question of which interval has the highest interval using a simple descending sorting
+
+```{r}
+sorted.ds<-stpavgint[order(-stpavgint[,2]),]
+```
+
+The interval with a highest steps average is `r sorted.ds[1,1]` with an average of `r sorted.ds[1,2]`
+
+finally a bit of clean up
+
+```{r}
+rm(list=c("int.melt","sorted.ds","clean.data"))
+## We will keep the the ds stpavgint to be use in the next section
+```
+
+__________________________________________________________________________________________________
+
+**3.** Imputing missing values
+
+__________________________________________________________________________________________________
+
+First we start calculating how many records are detected as NA
+
+```{r}
+tot.na<-sum(is.na(data))
+```
+
+The data set contains `r tot.na` records with NA 
+
+Now we will replace the NA values with the total average for that interval obtained in the section two exercise, this will allow to complete the data set
+
+```{r}
+comp.data<-data
+for(i in 1:length(comp.data[,1])){
+  if(is.na(comp.data$steps[i]))comp.data$steps[i]<-stpavgint$steps[stpavgint$interval==comp.data$interval[i]]
+  }
+```
+
+The following steps are repeated form the first section to understand the differences of the complete data set and the original data set with NA
+
+The first representation it is a basic histogram of the steps by date
+
+```{r}
+day.melt<-melt(comp.data,id="Rdate",measure.vars="steps")
+stpbydate<-dcast(day.melt,Rdate ~ variable,sum)
+hist(stpbydate$steps,col="blue", main="Steps by Date Histogram", xlab="Steps by Date")
+```
+
+Now we calculate the mean and median of the steps by date for the complete data set
+
+```{r kable_2}
+stpmnbydate<-dcast(day.melt,Rdate ~ variable,mean)
+stpmdbydate<-dcast(day.melt,Rdate ~ variable,median,fill=0)
+md_mn<-merge(stpmnbydate,stpmdbydate,by="Rdate")
+colnames(md_mn)<-c("Date","Steps Mean","Steps Median")
+kable(md_mn,digits = 4)
+```
+
+As the method selected to fill the NA values was to add the average for the interval, the frequency have a coherent increase as where there was no records before, now an average value has been added. On the mean the new values, as are based on the average, can easily be observed resides on the average not having an impact on the overall mean, the median are affected as there are intervals with very high peaks, so the days that were replaced by the total average of the intervals will have a pattern different than the original data set
+
+finally a bit of clean up
+
+```{r}
+rm(list=c("day.melt","md_mn","stpbydate","stpmnbydate","stpmdbydate","clean.pos","stpavgint","i"))
+```
+
+__________________________________________________________________________________________________
+
+**4.** Are there differences in activity patterns between weekdays and weekends?
+
+__________________________________________________________________________________________________
+
+In this section the date will be transformed to a variable that evaluates the day as weekend with the intention of observe how the same intervals behave between weekdays and weekends;
+
+The step to do this are;
+
+*1.* A new variable is added to determine the date is a weekend as TRUE or FALSE
+
+*2.* Then the data is melt by only the variables that will be used on the plot
+
+*3.* The we create a labeller so the facets names appears correctly
+
+*4.* Execute the plot using ggplot
+
+```{r}
+comp.data$isweekend<-isWeekend(comp.data$Rdate)
+int.melt<-melt(comp.data,id=c("interval","isweekend"),measure.vars="steps")
+stpavgint<-dcast(int.melt,interval + isweekend ~ variable,mean)
+mf_labeller <- function(var, value){
+    value <- as.character(value)
+    if (var=="isweekend") { 
+        value[value=="TRUE"] <- "Weekend"
+        value[value=="FALSE"]   <- "Weekday"
+    }
+    return(value)
+}
+ggplot(data=stpavgint,
+       aes(x=interval, y=steps)) +
+  geom_line() +
+  ggtitle("Total average of steps by interval") +
+  xlab("Interval") +
+  ylab("Average for all days") +
+  facet_grid(isweekend ~ ., labeller=mf_labeller)
+```
+
+From the graphs we can infer that the activity start later on the day for the weekends and is more even through the day than during the weekdays, also there is a small increase at the end of the day for the weekends.
